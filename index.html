@@ -29,39 +29,39 @@
       #md-app {
         width: 100%;
         max-width: 480px;
-        padding: 14px 16px 28px;
+        padding: 8px 14px calc(10px + env(safe-area-inset-bottom));
         display: flex;
         flex-direction: column;
-        gap: 12px;
+        gap: 8px;
       }
 
       .md-top {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 8px;
+        gap: 6px;
       }
-      .md-title { font-size: 24px; font-weight: 800; color: #9a7d96; letter-spacing: 0.3px; }
+      .md-title { font-size: 21px; font-weight: 800; color: #9a7d96; letter-spacing: 0.2px; white-space: nowrap; }
       .md-title span { color: var(--accent); }
-      .md-hud { display: flex; gap: 6px; font-size: 14px; font-weight: 700; }
+      .md-hud { display: flex; gap: 5px; font-size: 13px; font-weight: 700; }
       .md-chip {
         background: var(--card);
         border: none;
-        border-radius: 999px;
-        padding: 6px 12px;
-        min-width: 50px;
+        border-radius: 12px;
+        padding: 5px 9px;
         text-align: center;
+        white-space: nowrap;
         color: var(--ink);
         box-shadow: var(--shadow);
       }
       .md-chip.bad { color: var(--accent); }
 
-      .md-sizes { display: flex; gap: 7px; }
+      .md-sizes { display: flex; gap: 6px; }
       .md-sizes button {
         flex: 1;
-        padding: 8px 2px;
+        padding: 7px 2px;
         border: none;
-        border-radius: 13px;
+        border-radius: 12px;
         background: var(--card);
         color: var(--ink-soft);
         font-weight: 700;
@@ -73,21 +73,27 @@
       .md-sizes button.active { background: var(--accent); color: #fff; }
       .md-sizes button:active { transform: scale(0.95); }
 
-      .md-board-wrap { position: relative; width: 100%; aspect-ratio: 1 / 1; }
+      /* 棋盘按高度上限收缩，保证下方工具栏始终可见（预留约 300px 给其它行 + 浏览器栏）。 */
+      .md-board-wrap {
+        position: relative;
+        width: min(100%, calc(100dvh - 300px));
+        margin: 0 auto;
+        aspect-ratio: 1 / 1;
+      }
       #md-board { width: 100%; height: 100%; display: block; touch-action: none; }
 
-      .md-rules { display: flex; flex-wrap: wrap; justify-content: center; gap: 7px; }
+      .md-rules { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
       .md-rule {
         background: #ece6f0;
         color: #8c7e94;
         border-radius: 999px;
-        padding: 5px 13px;
-        font-size: 12.5px;
+        padding: 4px 11px;
+        font-size: 12px;
         font-weight: 700;
       }
 
-      .md-mascot-row { display: flex; align-items: center; gap: 8px; min-height: 30px; }
-      #md-mascot { font-size: 26px; }
+      .md-mascot-row { display: flex; align-items: center; gap: 8px; min-height: 24px; }
+      #md-mascot { font-size: 23px; }
       #md-bubble {
         background: var(--card);
         border: none;
@@ -103,23 +109,23 @@
       }
       #md-bubble.show { opacity: 1; transform: translateY(0); }
 
-      .md-tip { font-size: 12px; color: var(--ink-soft); text-align: center; line-height: 1.5; }
+      .md-tip { font-size: 11.5px; color: var(--ink-soft); text-align: center; line-height: 1.45; }
       .md-tip b { color: #9a7d96; }
 
-      .md-tools { display: grid; grid-template-columns: repeat(5, 1fr); gap: 9px; }
+      .md-tools { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
       .md-tools button {
-        padding: 11px 4px;
+        padding: 9px 4px;
         border: none;
-        border-radius: 16px;
+        border-radius: 14px;
         background: var(--card);
         color: var(--ink-soft);
         font-weight: 700;
-        font-size: 13.5px;
+        font-size: 13px;
         cursor: pointer;
         display: flex;
         flex-direction: column;
         align-items: center;
-        gap: 3px;
+        gap: 2px;
         box-shadow: var(--shadow);
         transition: transform 0.06s, background 0.12s, color 0.12s;
       }
