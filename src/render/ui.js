@@ -30,9 +30,11 @@ export function createUI(root, handlers) {
     winStats: el('#md-win-stats'),
     failModal: el('#md-fail'),
     failStats: el('#md-fail-stats'),
+    soundBtn: el('#md-sound'),
     sizeButtons,
   };
 
+  el('#md-sound').addEventListener('click', handlers.onToggleSound);
   el('#md-auto').addEventListener('click', handlers.onToggleAuto);
   el('#md-undo').addEventListener('click', handlers.onUndo);
   el('#md-clear').addEventListener('click', handlers.onClear);
@@ -89,5 +91,10 @@ export function createUI(root, handlers) {
     ui.failModal.classList.remove('show');
   }
 
-  return { refresh, showWin, showFail, hideModals, meow, ui };
+  function setSoundOn(on) {
+    ui.soundBtn.textContent = on ? '🔊' : '🔇';
+    ui.soundBtn.classList.toggle('off', !on);
+  }
+
+  return { refresh, showWin, showFail, hideModals, meow, setSoundOn, ui };
 }

@@ -123,26 +123,46 @@ const CONFLICT_PAL = {
   ear: '#f2b3aa',
 };
 
-export function drawContents(ctx, state) {
+// 在格中心套用缩放 + 透明度（用于出现动画），回调里按正常坐标绘制。
+function withCellAnim(ctx, cx, cy, a, draw) {
+  ctx.save();
+  ctx.globalAlpha = a.alpha;
+  ctx.translate(cx, cy);
+  ctx.scale(a.scale, a.scale);
+  ctx.translate(-cx, -cy);
+  draw();
+  ctx.restore();
+}
+
+const ID_ANIM = { scale: 1, alpha: 1 };
+
+export function drawContents(ctx, state, anim) {
   const N = state.N;
+  // 小猫（弹入动画）
   for (let i = 0; i < state.cells.length; i++) {
     if (state.cells[i] !== CELL.CAT) continue;
     const t = tileRect(N, i);
     const cx = t.x + t.w / 2;
     const cy = t.y + t.h / 2;
-    drawCat(ctx, cx, cy + t.h * 0.02, t.w * 0.96, state.conflicts.has(i) ? CONFLICT_PAL : NORMAL_PAL);
+    const pal = state.conflicts.has(i) ? CONFLICT_PAL : NORMAL_PAL;
+    withCellAnim(ctx, cx, cy, anim ? anim.catAt(i) : ID_ANIM, () => {
+      drawCat(ctx, cx, cy + t.h * 0.02, t.w * 0.96, pal);
+    });
   }
 
-  // 排除标记 ✕：放错的红 ✕（醒目、略粗）；手动 ✕ 或自动排除的灰 ✕
+  // 排除标记 ✕（弹出现动画）：放错的红 ✕（醒目、略粗）；手动 ✕ 或自动排除的灰 ✕
   for (let i = 0; i < state.cells.length; i++) {
     const v = state.cells[i];
     if (v === CELL.CAT) continue;
+    const isWrong = v === CELL.WRONG;
+    if (!isWrong && v !== CELL.MARK && !state.autoMarks.has(i)) continue;
     const t = tileRect(N, i);
-    if (v === CELL.WRONG) {
-      drawMark(ctx, t.x + t.w / 2, t.y + t.h / 2, t, THEME.markWrong, 0.085);
-    } else if (v === CELL.MARK || state.autoMarks.has(i)) {
-      drawMark(ctx, t.x + t.w / 2, t.y + t.h / 2, t);
-    }
+    const cx = t.x + t.w / 2;
+    const cy = t.y + t.h / 2;
+    withCellAnim(ctx, cx, cy, anim ? anim.markAt(i) : ID_ANIM, () => {
+      if (isWrong) drawMark(ctx, cx, cy, t, THEME.markWrong, 0.085);
+      else drawMark(ctx, cx, cy, t);
+    });
   }
 }
 

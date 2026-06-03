@@ -192,6 +192,48 @@ export function createGame() {
     checkWin();
   }
 
+  // ---- 滑动批量打/擦 ✕ ----
+  // beginStroke 按起点格决定模式（空→涂✕ / ✕→擦），整段拖动合并为一次撤销。
+  let stroke = null;
+  function beginStroke(index) {
+    if (state.status !== 'playing') return null;
+    if (index < 0 || index >= state.cells.length) return null;
+    const v = state.cells[index];
+    if (v === CELL.CAT || v === CELL.WRONG) return null; // 猫 / 红✕ 不参与涂抹
+    stroke = { mode: v === CELL.MARK ? 'erase' : 'mark', changes: new Map() };
+    stats.start();
+    paintAt(index);
+    return stroke.mode;
+  }
+  function paintAt(index) {
+    if (!stroke || index < 0 || index >= state.cells.length) return;
+    const v = state.cells[index];
+    if (stroke.mode === 'mark') {
+      if (v !== CELL.EMPTY) return; // 只在空格涂 ✕，跳过猫/红✕/已有✕
+      if (!stroke.changes.has(index)) stroke.changes.set(index, v);
+      state.cells[index] = CELL.MARK;
+    } else {
+      if (v !== CELL.MARK) return; // 只擦手动 ✕
+      if (!stroke.changes.has(index)) stroke.changes.set(index, v);
+      state.cells[index] = CELL.EMPTY;
+    }
+    state.selected = index;
+    bus.emit('cellChanged', { index, prev: stroke.changes.get(index), next: state.cells[index] });
+  }
+  function endStroke() {
+    if (!stroke) return 0;
+    const changes = [...stroke.changes].map(([index, prev]) => ({ index, prev, next: state.cells[index] }));
+    const mode = stroke.mode;
+    stroke = null;
+    if (changes.length) {
+      history.push({ type: 'stroke', changes });
+      if (history.length > 400) history.shift();
+      recompute();
+      bus.emit('strokeEnd', { mode, count: changes.length });
+    }
+    return changes.length;
+  }
+
   function clearBoard() {
     if (state.status !== 'playing') return;
     state.cells = state.cells.map(() => CELL.EMPTY);
@@ -204,10 +246,15 @@ export function createGame() {
     if (state.status !== 'playing') return;
     const entry = history.pop();
     if (!entry) return;
-    state.cells[entry.index] = entry.prev;
-    state.selected = entry.index;
+    if (entry.type === 'stroke') {
+      for (const c of entry.changes) state.cells[c.index] = c.prev;
+      if (entry.changes.length) state.selected = entry.changes[entry.changes.length - 1].index;
+    } else {
+      state.cells[entry.index] = entry.prev;
+      state.selected = entry.index;
+    }
     recompute();
-    bus.emit('undone', { index: entry.index });
+    bus.emit('undone', {});
   }
 
   // 提示：在“尚无正确小猫”的某个区域放入唯一解的小猫，并清掉该区其它小猫。
@@ -260,6 +307,9 @@ export function createGame() {
     select,
     cycleCell,
     attemptCat,
+    beginStroke,
+    paintAt,
+    endStroke,
     setCellState,
     clearBoard,
     undo,

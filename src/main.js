@@ -5,13 +5,17 @@ import { createGame } from './core/game.js';
 import { drawBoard } from './render/grid.js';
 import { drawConflictCells, drawContents, drawSelectionRing } from './render/cells.js';
 import { createEffects } from './render/effects.js';
+import { createAnim } from './render/anim.js';
 import { createUI } from './render/ui.js';
+import { createAudio } from './audio/sound.js';
 
 const root = document;
 const canvas = root.getElementById('md-board');
 const ctx = canvas.getContext('2d');
 const game = createGame();
 const effects = createEffects();
+const anim = createAnim();
+const audio = createAudio();
 
 // ---- Canvas 自适应：CSS 控制显示尺寸，逻辑坐标固定 0..BOARD_PX ----
 function resizeCanvas() {
@@ -34,13 +38,51 @@ function pointToCell(clientX, clientY) {
   return r * N + c;
 }
 
+// 指针：轻点 → 三态循环；按住拖动 → 批量打/擦 ✕（滑过的格子）。
+let drag = null; // { startCell, x, y, dragging, mode }
+const DRAG_PX = 8;
+
 canvas.addEventListener('pointerdown', (e) => {
+  audio.unlock();
   const i = pointToCell(e.clientX, e.clientY);
-  if (i >= 0) game.cycleCell(i);
+  if (i < 0) return;
+  drag = { startCell: i, x: e.clientX, y: e.clientY, dragging: false, mode: null };
+  try {
+    canvas.setPointerCapture(e.pointerId);
+  } catch {
+    /* ignore */
+  }
 });
+
+canvas.addEventListener('pointermove', (e) => {
+  if (!drag) return;
+  const i = pointToCell(e.clientX, e.clientY);
+  if (!drag.dragging) {
+    const moved = Math.hypot(e.clientX - drag.x, e.clientY - drag.y);
+    if (moved < DRAG_PX && i === drag.startCell) return; // 还算轻点
+    drag.dragging = true;
+    drag.mode = game.beginStroke(drag.startCell); // 起点决定涂 / 擦
+    if (drag.mode && i >= 0 && i !== drag.startCell) game.paintAt(i);
+  } else if (drag.mode && i >= 0) {
+    game.paintAt(i);
+  }
+});
+
+function endPointer() {
+  if (!drag) return;
+  if (!drag.dragging) {
+    game.cycleCell(drag.startCell); // 轻点 = 三态循环
+  } else {
+    game.endStroke();
+  }
+  drag = null;
+}
+canvas.addEventListener('pointerup', endPointer);
+canvas.addEventListener('pointercancel', endPointer);
 
 window.addEventListener('keydown', (e) => {
   if (game.state.status !== 'playing') return;
+  audio.unlock();
   const N = game.state.N;
   if (e.key === ' ' || e.key === 'Enter') {
     if (game.state.selected >= 0) game.cycleCell(game.state.selected);
@@ -89,23 +131,44 @@ const ui = createUI(root, {
   onToggleAuto: () => {
     const on = game.setAutoEliminate(!game.state.autoEliminate);
     saveAutoPref(on);
+    audio.click();
     ui.meow(on ? '自动打叉：开喵' : '自动打叉：关喵');
+  },
+  onToggleSound: () => {
+    audio.unlock();
+    const on = audio.setEnabled(!audio.enabled);
+    ui.setSoundOn(on);
+    ui.meow(on ? '声音：开喵 🔊' : '声音：静音 🔇');
   },
 });
 
-// ---- 事件 → 特效 / 吉祥物 ----
-game.on('catPlaced', ({ index }) => effects.pulse(index));
-game.on('hintUsed', ({ index }) => effects.pulse(index));
+// ---- 事件 → 特效 / 动画 / 音效 / 吉祥物 ----
+game.on('catPlaced', ({ index }) => {
+  effects.pulse(index);
+  anim.spawnCat(index);
+  audio.good();
+});
+game.on('hintUsed', ({ index }) => {
+  effects.pulse(index);
+  anim.spawnCat(index);
+  audio.good();
+});
 game.on('wrongPlacement', ({ index, hp }) => {
   effects.flashWrong(index);
+  audio.bad();
   ui.meow(hp > 0 ? `喵？这里不对，还剩 ${hp} ❤️` : '喵呜…');
+});
+game.on('cellChanged', ({ next }) => {
+  if (next === CELL.MARK) audio.click(); // 打 ✕（含滑动，内部节流）
 });
 game.on('gameWon', (payload) => {
   effects.celebrate();
+  audio.win();
   ui.meow('喵呜！全部安顿好啦！');
   ui.showWin(payload);
 });
 game.on('gameLost', (payload) => {
+  audio.fail();
   ui.meow('下次一定喵…');
   ui.showFail(payload);
 });
@@ -115,6 +178,8 @@ function startGame(n, seed) {
   game.newGame(n, seed);
   effects.setBoard(game.state.N);
   effects.reset();
+  anim.reset();
+  anim.syncMarks(game.state); // 以空盘为基线，避免开局误触发动画
   resizeCanvas();
   ui.meow('给每只猫找个位子喵~');
 }
@@ -122,10 +187,12 @@ function startGame(n, seed) {
 // ---- 渲染循环 ----
 function frame() {
   ctx.clearRect(0, 0, BOARD_PX, BOARD_PX);
+  anim.syncMarks(game.state); // 检测新出现的 ✕ 起出现动画
   drawBoard(ctx, game.state);
   drawConflictCells(ctx, game.state);
-  drawContents(ctx, game.state);
+  drawContents(ctx, game.state, anim);
   drawSelectionRing(ctx, game.state);
+  anim.update();
   effects.update();
   effects.draw(ctx);
   ui.refresh(game.state, game.stats);
@@ -134,6 +201,7 @@ function frame() {
 
 // ---- 启动 ----
 game.setAutoEliminate(loadAutoPref()); // 应用玩家偏好
+ui.setSoundOn(audio.enabled); // 同步声音按钮初始态
 resizeCanvas();
 startGame();
 requestAnimationFrame(frame);
