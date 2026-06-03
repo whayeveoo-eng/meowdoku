@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+    <meta name="theme-color" content="#f6f0e8" />
+    <title>Meowdoku · 喵咪安家</title>
+    <style>
+      * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+      :root {
+        --bg: #f6f0e8;
+        --ink: #6e5a64;
+        --ink-soft: #9a8a90;
+        --accent: #ec9389;
+        --card: #ffffff;
+        --shadow: 0 3px 10px rgba(150, 120, 140, 0.18);
+        --shadow-lg: 0 16px 38px rgba(120, 90, 110, 0.28);
+      }
+      html, body {
+        margin: 0;
+        height: 100%;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: "Baloo 2", "PingFang SC", system-ui, -apple-system, sans-serif;
+        user-select: none;
+        -webkit-user-select: none;
+      }
+      body { display: flex; justify-content: center; align-items: flex-start; }
+      #md-app {
+        width: 100%;
+        max-width: 480px;
+        padding: 14px 16px 28px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .md-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      .md-title { font-size: 24px; font-weight: 800; color: #9a7d96; letter-spacing: 0.3px; }
+      .md-title span { color: var(--accent); }
+      .md-hud { display: flex; gap: 6px; font-size: 14px; font-weight: 700; }
+      .md-chip {
+        background: var(--card);
+        border: none;
+        border-radius: 999px;
+        padding: 6px 12px;
+        min-width: 50px;
+        text-align: center;
+        color: var(--ink);
+        box-shadow: var(--shadow);
+      }
+      .md-chip.bad { color: var(--accent); }
+
+      .md-sizes { display: flex; gap: 7px; }
+      .md-sizes button {
+        flex: 1;
+        padding: 8px 2px;
+        border: none;
+        border-radius: 13px;
+        background: var(--card);
+        color: var(--ink-soft);
+        font-weight: 700;
+        font-size: 14px;
+        cursor: pointer;
+        box-shadow: var(--shadow);
+        transition: transform 0.08s, background 0.15s, color 0.15s;
+      }
+      .md-sizes button.active { background: var(--accent); color: #fff; }
+      .md-sizes button:active { transform: scale(0.95); }
+
+      .md-board-wrap { position: relative; width: 100%; aspect-ratio: 1 / 1; }
+      #md-board { width: 100%; height: 100%; display: block; touch-action: none; }
+
+      .md-rules { display: flex; flex-wrap: wrap; justify-content: center; gap: 7px; }
+      .md-rule {
+        background: #ece6f0;
+        color: #8c7e94;
+        border-radius: 999px;
+        padding: 5px 13px;
+        font-size: 12.5px;
+        font-weight: 700;
+      }
+
+      .md-mascot-row { display: flex; align-items: center; gap: 8px; min-height: 30px; }
+      #md-mascot { font-size: 26px; }
+      #md-bubble {
+        background: var(--card);
+        border: none;
+        border-radius: 14px;
+        padding: 5px 13px;
+        font-size: 14px;
+        font-weight: 700;
+        color: var(--ink);
+        box-shadow: var(--shadow);
+        opacity: 0;
+        transform: translateY(4px);
+        transition: opacity 0.2s, transform 0.2s;
+      }
+      #md-bubble.show { opacity: 1; transform: translateY(0); }
+
+      .md-tip { font-size: 12px; color: var(--ink-soft); text-align: center; line-height: 1.5; }
+      .md-tip b { color: #9a7d96; }
+
+      .md-tools { display: grid; grid-template-columns: repeat(5, 1fr); gap: 9px; }
+      .md-tools button {
+        padding: 11px 4px;
+        border: none;
+        border-radius: 16px;
+        background: var(--card);
+        color: var(--ink-soft);
+        font-weight: 700;
+        font-size: 13.5px;
+        cursor: pointer;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 3px;
+        box-shadow: var(--shadow);
+        transition: transform 0.06s, background 0.12s, color 0.12s;
+      }
+      .md-tools button:active { transform: scale(0.94); }
+      .md-tools .md-ico { font-size: 18px; line-height: 1; }
+      .md-tools button.active { background: var(--accent); color: #fff; }
+      .md-tools button.off { opacity: 0.55; }
+
+      .md-modal {
+        position: fixed;
+        inset: 0;
+        background: rgba(110, 90, 100, 0.42);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        z-index: 10;
+      }
+      .md-modal.show { display: flex; }
+      .md-card {
+        background: var(--card);
+        border-radius: 26px;
+        padding: 28px 26px;
+        text-align: center;
+        max-width: 320px;
+        width: 100%;
+        box-shadow: var(--shadow-lg);
+        animation: pop 0.3s ease;
+      }
+      @keyframes pop { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+      .md-card .md-cat { font-size: 56px; }
+      .md-card h2 { margin: 6px 0 2px; color: var(--accent); font-size: 28px; }
+      .md-card .md-big { font-size: 34px; font-weight: 800; color: var(--ink); margin: 8px 0 2px; }
+      .md-card .md-sub { color: var(--ink-soft); font-size: 14px; font-weight: 600; }
+      .md-card button {
+        margin-top: 18px;
+        width: 100%;
+        padding: 12px;
+        border: none;
+        border-radius: 16px;
+        background: var(--accent);
+        color: #fff;
+        font-size: 17px;
+        font-weight: 800;
+        cursor: pointer;
+      }
+      .md-card button:active { transform: scale(0.97); }
+      .md-card button.md-ghost {
+        margin-top: 10px;
+        background: transparent;
+        color: var(--ink-soft);
+        font-size: 15px;
+        font-weight: 700;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="md-app">
+      <div class="md-top">
+        <div class="md-title">Meow<span>doku</span> 🐾</div>
+        <div class="md-hud">
+          <div class="md-chip" id="md-cats">🐱 0/8</div>
+          <div class="md-chip" id="md-timer">00:00</div>
+          <div class="md-chip" id="md-hp">❤️❤️❤️</div>
+        </div>
+      </div>
+
+      <div class="md-sizes" id="md-sizes"></div>
+
+      <div class="md-rules">
+        <span class="md-rule">一种颜色一只猫</span>
+        <span class="md-rule">同行同列各一只</span>
+        <span class="md-rule">猫咪不能相邻</span>
+      </div>
+
+      <div class="md-board-wrap">
+        <canvas id="md-board" width="900" height="900"></canvas>
+      </div>
+
+      <div class="md-mascot-row">
+        <div id="md-mascot">🐱</div>
+        <div id="md-bubble">给每只猫找个位子喵~</div>
+      </div>
+
+      <div class="md-tip">
+        点格子循环：<b>空 → ✕ → 🐱 → 空</b> · 放错猫 <b>扣 1 ❤️</b>（每关 3 ❤️）
+      </div>
+
+      <div class="md-tools">
+        <button id="md-auto"><span class="md-ico">✕</span>自动叉</button>
+        <button id="md-undo"><span class="md-ico">↩️</span>撤销</button>
+        <button id="md-clear"><span class="md-ico">🧹</span>清空</button>
+        <button id="md-hint"><span class="md-ico">💡</span>提示</button>
+        <button id="md-new"><span class="md-ico">🔄</span>新关</button>
+      </div>
+    </div>
+
+    <div class="md-modal" id="md-win">
+      <div class="md-card">
+        <div class="md-cat">😻</div>
+        <h2>安家成功喵！</h2>
+        <div class="md-big" id="md-win-time">00:00</div>
+        <div class="md-sub" id="md-win-stats"></div>
+        <button id="md-win-again">再来一关 🐾</button>
+      </div>
+    </div>
+
+    <div class="md-modal" id="md-fail">
+      <div class="md-card">
+        <div class="md-cat">🙀</div>
+        <h2 style="color:#d6432f">喵呜…没血了</h2>
+        <div class="md-sub" id="md-fail-stats"></div>
+        <button id="md-fail-retry">再试一次（同一关）🐾</button>
+        <button id="md-fail-new" class="md-ghost">换一关</button>
+      </div>
+    </div>
+
+    <script type="module" src="src/main.js"></script>
+  </body>
+</html>
