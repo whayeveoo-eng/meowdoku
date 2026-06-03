@@ -156,6 +156,12 @@ const ui = createUI(root, {
   },
   onRestart: () => startLevel(game.state.levelId || progress.current),
   onOpenLevels: () => { ui.hideModals(); ui.openLevels(progress); },
+  onUnlockAll: () => {
+    progress.unlocked = LEVEL_COUNT;
+    saveProgress();
+    ui.openLevels(progress); // 刷新网格
+    ui.meow('已解锁全部 100 关喵~ 🔓');
+  },
   onUndo: () => game.undo(),
   onClear: () => game.clearBoard(),
   onHint: () => game.hint(),

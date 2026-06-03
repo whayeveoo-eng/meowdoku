@@ -27,13 +27,17 @@ export function createUI(root, handlers, levels) {
     levelsCount: el('#md-levels-count'),
   };
 
-  // 选关网格：100 个按钮，建一次。
+  // 选关网格：100 个按钮，建一次。每个显示「关号 + N×N 行列 + 难度星」。
   ui.levelButtons = [];
   for (const lv of levels) {
     const b = document.createElement('button');
     b.className = 'md-lvl';
     b.dataset.level = String(lv.id);
-    b.dataset.stars = String(levelStars(lv.n, lv.maxLayer));
+    const st = levelStars(lv.n, lv.maxLayer);
+    b.innerHTML =
+      `<span class="md-lvl-no">${lv.id}</span>` +
+      `<span class="md-lvl-sz">${lv.n}×${lv.n}</span>` +
+      `<span class="md-lvl-st" data-stars="${st}">${'★'.repeat(st)}</span>`;
     b.addEventListener('click', () => handlers.onSelectLevel(lv.id));
     ui.levelGrid.appendChild(b);
     ui.levelButtons.push(b);
@@ -41,6 +45,7 @@ export function createUI(root, handlers, levels) {
 
   el('#md-levels-btn').addEventListener('click', () => handlers.onOpenLevels());
   el('#md-levels-close').addEventListener('click', () => ui.levelsModal.classList.remove('show'));
+  el('#md-unlock-all').addEventListener('click', () => handlers.onUnlockAll());
   el('#md-fail-levels').addEventListener('click', () => handlers.onOpenLevels());
   el('#md-win-levels').addEventListener('click', () => handlers.onOpenLevels());
   el('#md-next').addEventListener('click', () => handlers.onNext());
@@ -94,7 +99,6 @@ export function createUI(root, handlers, levels) {
       b.classList.toggle('done', isDone);
       b.classList.toggle('locked', !unlocked);
       b.classList.toggle('current', id === progress.current);
-      b.textContent = !unlocked ? '🔒' : isDone ? '✓' : String(id);
       b.disabled = !unlocked;
     }
     ui.levelsCount.textContent = `已通关 ${done} / ${levels.length}`;

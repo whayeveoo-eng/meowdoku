@@ -108,31 +108,46 @@
         padding: 2px;
       }
       .md-lvl {
-        aspect-ratio: 1 / 1;
+        position: relative;
+        min-height: 54px;
         border: none;
         border-radius: 12px;
         background: #f3ede8;
         color: var(--ink);
-        font-weight: 800;
-        font-size: 15px;
         cursor: pointer;
         box-shadow: var(--shadow);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 1px;
+        padding: 5px 2px;
       }
+      .md-lvl-no { font-weight: 800; font-size: 15px; line-height: 1.05; }
+      .md-lvl-sz { font-size: 9.5px; font-weight: 700; color: var(--ink-soft); }
+      .md-lvl-st { font-size: 9px; line-height: 1; color: #e0a92e; letter-spacing: 0.3px; }
+      .md-lvl-st[data-stars="4"], .md-lvl-st[data-stars="5"] { color: #d6432f; }
       .md-lvl:active { transform: scale(0.92); }
       .md-lvl.current { outline: 3px solid var(--accent); }
-      .md-lvl.done { background: #a8d488; color: #fff; }
-      .md-lvl.locked { background: #ece7e1; color: #c4bbb2; box-shadow: none; cursor: default; }
-      .md-levels-close {
-        margin-top: 12px;
+      .md-lvl.done { background: #a8d488; }
+      .md-lvl.done .md-lvl-no { color: #fff; }
+      .md-lvl.done .md-lvl-sz { color: #effbe6; }
+      .md-lvl.done .md-lvl-st { color: #fff; }
+      .md-lvl.locked { background: #ece7e1; box-shadow: none; cursor: default; opacity: 0.6; }
+      .md-lvl.locked::after { content: '🔒'; position: absolute; top: 2px; right: 4px; font-size: 10px; }
+      .md-levels-foot { display: flex; gap: 8px; margin-top: 12px; }
+      .md-levels-foot button {
+        flex: 1;
         border: none;
         border-radius: 14px;
-        background: #ece6f0;
-        color: #8c7e94;
         font-weight: 700;
         font-size: 15px;
         padding: 10px;
         cursor: pointer;
       }
+      .md-levels-unlock { background: #ffe2ad; color: #b07d4e; }
+      .md-levels-close { background: #ece6f0; color: #8c7e94; }
+      .md-levels-foot button:active { transform: scale(0.97); }
 
       /* 棋盘按高度上限收缩，保证下方工具栏始终可见（预留约 300px 给其它行 + 浏览器栏）。 */
       .md-board-wrap {
@@ -333,7 +348,10 @@
           <span class="md-levels-count" id="md-levels-count">已通关 0 / 100</span>
         </div>
         <div id="md-levelgrid"></div>
-        <button class="md-levels-close" id="md-levels-close">关闭</button>
+        <div class="md-levels-foot">
+          <button class="md-levels-unlock" id="md-unlock-all">🔓 解锁全部</button>
+          <button class="md-levels-close" id="md-levels-close">关闭</button>
+        </div>
       </div>
     </div>
 
