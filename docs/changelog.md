@@ -1,5 +1,10 @@
 # Meowdoku · 版本记录
 
+## 部署
+
+- 在线地址：https://whayeveoo-eng.github.io/meowdoku/ （GitHub Pages，仓库 `whayeveoo-eng/meowdoku`，public，main 分支根目录）。
+- 发布方式按 `游戏项目开发说明.md`「部署规范」：rsync 抽干净副本（排除参考图 `IMG_0668.PNG` / 系统文件）→ `gh repo create --public --push` → 开 Pages。更新只需 rsync 同步 → commit → push，Pages 自动重建。
+
 ## v0.3.3 — 2026-06-03（放错留下红 ✕ 提示）
 
 - **放错猫留红 ✕**：在放错猫的格子上留下一个醒目的**红色 ✕**（持久提示玩家此处试过且错了），不再只是一闪而过。新增单元格状态 `CELL.WRONG=3` 与配色 `THEME.markWrong`。

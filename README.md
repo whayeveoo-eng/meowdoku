@@ -1,5 +1,7 @@
 # Meowdoku · 喵咪安家 🐾
 
+🎮 在线试玩：**https://whayeveoo-eng.github.io/meowdoku/**
+
 竖屏手机上的**喵主题逻辑解谜**（猫版 LinkedIn「Queens」）。N×N 棋盘被分成 N 个连通的同色区域，给每只猫安一个家：
 
 - 每行、每列、每种颜色 **恰好 1 只猫**；
