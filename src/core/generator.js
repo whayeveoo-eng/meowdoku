@@ -5,7 +5,7 @@
 //    从而破坏这个替代解；目标解的猫格永不移动，故目标解始终保持合法。收敛到唯一解。
 // 纯随机生长 + 拒绝在大 N 上几乎不可能唯一，精修是关键。
 
-import { countSolutions, findAltSolution, logicalSolve } from './solver.js';
+import { countSolutions, findAltSolution, rateLevel } from './solver.js';
 import { regionsValid } from './board.js';
 import { shuffle } from './rng.js';
 
@@ -156,12 +156,12 @@ export function generateLevel(N, rng, opts = {}) {
       if (!regionsValid(region, N) || countSolutions(region, N, 2) !== 1) continue;
 
       if (!requireLogical) {
-        return { region, N, solution: catCells.slice(), attempts };
+        return { region, N, solution: catCells.slice(), attempts, maxLayer: rateLevel(region, N) };
       }
-      // 纯逻辑可解检验：能完全推出即可（推导可靠 → 解唯一且无需猜）。
-      const logical = logicalSolve(region, N);
-      if (logical && logical.length === N) {
-        return { region, N, solution: catCells.slice(), attempts };
+      // 纯逻辑可解检验 + 难度评级：rateLevel 返回 1..4(所需最高层级)，0=需假设(拒绝)。
+      const tier = rateLevel(region, N);
+      if (tier >= 1) {
+        return { region, N, solution: catCells.slice(), attempts, maxLayer: tier };
       }
       if (!uniqueFallback) uniqueFallback = { region: region.slice(), solution: catCells.slice() };
     }
@@ -169,10 +169,10 @@ export function generateLevel(N, rng, opts = {}) {
 
   // 兜底：用一个“唯一但可能需要猜”的关卡（极少触发），保证总能开局。
   if (uniqueFallback) {
-    return { ...uniqueFallback, N, attempts, fallback: true };
+    return { ...uniqueFallback, N, attempts, fallback: true, maxLayer: 0 };
   }
   const p = generatePlacement(N, rng) || [];
   const catCells = p.map((c, r) => r * N + c);
   const region = growRegions(N, catCells, rng);
-  return { region, N, solution: catCells.slice(), attempts, fallback: true };
+  return { region, N, solution: catCells.slice(), attempts, fallback: true, maxLayer: 0 };
 }

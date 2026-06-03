@@ -146,18 +146,45 @@ export function findAltSolution(region, N, targetSet) {
   return found;
 }
 
-// 人类式逻辑求解器：只用“严格推导”规则（不猜、不回溯）尝试解出整盘。
-// 用作生成过滤——能被它完全解出的关卡，玩家就能从初始盘面一步步推出来。
-// 规则均“可靠”（只确定必然为猫 / 必然非猫的格）：
-//   R1 某区域只剩 1 个候选 → 该格是猫
-//   R2 某行只剩 1 个候选 → 该格是猫
-//   R3 某列只剩 1 个候选 → 该格是猫
-//   R4 限定法（仅在 R1–R3 停滞时启用）：
-//      - 某区域候选都在同一行/列 → 该行/列其它格排除
-//      - 某行/列候选都在同一区域 → 该区域其它（非此行/列）格排除
-// 放下一只猫会排除它的行、列、区域、九宫格邻居。
-// 返回解出的猫格数组（已全解）或 null（停滞，说明需要猜）。
-export function logicalSolve(region, N) {
+// 人类式约束传播求解器（分层 L1–L4，只用“可靠”推导，不猜、不回溯）。详见 docs/solving.md。
+// 层级按人类直觉代价从低到高排:
+//   L1 单候选：某区域/行/列只剩 1 候选 → 落猫（落子传播排除其行/列/区域/九宫格）
+//   L2 限定/指向 n=1：某色候选全在 1 行/列 → 该行/列其它色候选排除；某行/列候选全属 1 色 → 该色别处候选排除
+//   L3 相邻锁定（直觉、常用）：与某色全部候选都相邻的格 → 必非猫，排除
+//   L4 Hall 子集 n≥2（抽象、罕见）：n 个 subject 的候选特征并集恰好 = n → 其余 subject 在这些特征上的候选排除（4 个二部视角）
+// 用作生成过滤 + 难度评级。实测:相邻锁定很常用(基础)，Hall n≥2 才是真正的难点。
+
+const SUBSET_CAP = 3; // Hall 子集枚举的最大 n（n≤3 足以覆盖绝大多数；控制开销）
+
+function kingNeighbors(idx, N) {
+  const r = Math.floor(idx / N);
+  const c = idx % N;
+  const out = [];
+  for (let dr = -1; dr <= 1; dr++) {
+    for (let dc = -1; dc <= 1; dc++) {
+      if (!dr && !dc) continue;
+      const nr = r + dr;
+      const nc = c + dc;
+      if (nr >= 0 && nr < N && nc >= 0 && nc < N) out.push(nr * N + nc);
+    }
+  }
+  return out;
+}
+
+function* combinations(arr, k, start = 0, acc = []) {
+  if (acc.length === k) {
+    yield acc;
+    return;
+  }
+  for (let i = start; i < arr.length; i++) {
+    acc.push(arr[i]);
+    yield* combinations(arr, k, i + 1, acc);
+    acc.pop();
+  }
+}
+
+// 运行 L1..maxLayer 的约束传播到不动点。返回 { placed, cat }。
+function propagate(region, N, maxLayer) {
   const total = N * N;
   const cat = new Array(total).fill(false);
   const elim = new Array(total).fill(false);
@@ -165,137 +192,117 @@ export function logicalSolve(region, N) {
   let placed = 0;
   const isCand = (i) => !cat[i] && !elim[i];
 
-  function placeCat(i) {
+  function place(i) {
     if (cat[i]) return;
     cat[i] = true;
     placed++;
     const r = Math.floor(i / N);
     const c = i % N;
     const g = region[i];
-    for (let cc = 0; cc < N; cc++) if (cc !== c) elim[r * N + cc] = true;
-    for (let rr = 0; rr < N; rr++) if (rr !== r) elim[rr * N + c] = true;
-    for (const j of byRegion[g]) if (j !== i) elim[j] = true;
-    for (let dr = -1; dr <= 1; dr++) {
-      for (let dc = -1; dc <= 1; dc++) {
-        const nr = r + dr;
-        const nc = c + dc;
-        if (nr >= 0 && nr < N && nc >= 0 && nc < N) {
-          const j = nr * N + nc;
-          if (j !== i) elim[j] = true;
-        }
-      }
-    }
+    const kill = (j) => { if (j !== i && isCand(j)) elim[j] = true; };
+    for (let x = 0; x < N; x++) { kill(r * N + x); kill(x * N + c); }
+    for (const j of byRegion[g]) kill(j);
+    for (const j of kingNeighbors(i, N)) kill(j);
   }
+  const colCands = (g) => byRegion[g].filter(isCand);
+  const rowCands = (r) => { const o = []; for (let c = 0; c < N; c++) if (isCand(r * N + c)) o.push(r * N + c); return o; };
+  const colCells = (c) => { const o = []; for (let r = 0; r < N; r++) if (isCand(r * N + c)) o.push(r * N + c); return o; };
+  const rowHasCat = (r) => { for (let c = 0; c < N; c++) if (cat[r * N + c]) return true; return false; };
+  const colHasCat = (c) => { for (let r = 0; r < N; r++) if (cat[r * N + c]) return true; return false; };
 
-  let changed = true;
-  let safety = 0;
-  while (changed && placed < N && safety++ < total * total) {
-    changed = false;
-
-    // R1 区域
+  // L1：单候选落子。返回是否落子；遇矛盾返回 'dead'。
+  function runSingles() {
+    let did = false;
     for (let g = 0; g < N; g++) {
-      const cells = byRegion[g];
-      if (cells.some((i) => cat[i])) continue;
-      const cands = cells.filter(isCand);
-      if (cands.length === 1) {
-        placeCat(cands[0]);
-        changed = true;
-      } else if (cands.length === 0) {
-        return null;
-      }
-    }
-    // R2 行
-    for (let r = 0; r < N; r++) {
-      let has = false;
-      const cands = [];
-      for (let c = 0; c < N; c++) {
-        const i = r * N + c;
-        if (cat[i]) { has = true; break; }
-        if (isCand(i)) cands.push(i);
-      }
-      if (has) continue;
-      if (cands.length === 1) { placeCat(cands[0]); changed = true; }
-      else if (cands.length === 0) return null;
-    }
-    // R3 列
-    for (let c = 0; c < N; c++) {
-      let has = false;
-      const cands = [];
-      for (let r = 0; r < N; r++) {
-        const i = r * N + c;
-        if (cat[i]) { has = true; break; }
-        if (isCand(i)) cands.push(i);
-      }
-      if (has) continue;
-      if (cands.length === 1) { placeCat(cands[0]); changed = true; }
-      else if (cands.length === 0) return null;
-    }
-
-    if (changed || placed >= N) continue;
-
-    // R4 限定法（仅在基础规则停滞时）
-    for (let g = 0; g < N; g++) {
-      const cells = byRegion[g];
-      if (cells.some((i) => cat[i])) continue;
-      const cands = cells.filter(isCand);
-      if (cands.length < 2) continue;
-      const rows = new Set(cands.map((i) => Math.floor(i / N)));
-      const cols = new Set(cands.map((i) => i % N));
-      if (rows.size === 1) {
-        const r = [...rows][0];
-        for (let c = 0; c < N; c++) {
-          const i = r * N + c;
-          if (isCand(i) && region[i] !== g) { elim[i] = true; changed = true; }
-        }
-      }
-      if (cols.size === 1) {
-        const c = [...cols][0];
-        for (let r = 0; r < N; r++) {
-          const i = r * N + c;
-          if (isCand(i) && region[i] !== g) { elim[i] = true; changed = true; }
-        }
-      }
+      if (byRegion[g].some((i) => cat[i])) continue;
+      const cd = colCands(g);
+      if (cd.length === 1) { place(cd[0]); did = true; } else if (cd.length === 0) return 'dead';
     }
     for (let r = 0; r < N; r++) {
-      let has = false;
-      const cands = [];
-      for (let c = 0; c < N; c++) {
-        const i = r * N + c;
-        if (cat[i]) { has = true; break; }
-        if (isCand(i)) cands.push(i);
-      }
-      if (has || cands.length < 2) continue;
-      const regs = new Set(cands.map((i) => region[i]));
-      if (regs.size === 1) {
-        const g = [...regs][0];
-        for (const i of byRegion[g]) {
-          if (isCand(i) && Math.floor(i / N) !== r) { elim[i] = true; changed = true; }
-        }
-      }
+      if (rowHasCat(r)) continue;
+      const cd = rowCands(r);
+      if (cd.length === 1) { place(cd[0]); did = true; } else if (cd.length === 0) return 'dead';
     }
     for (let c = 0; c < N; c++) {
-      let has = false;
-      const cands = [];
-      for (let r = 0; r < N; r++) {
-        const i = r * N + c;
-        if (cat[i]) { has = true; break; }
-        if (isCand(i)) cands.push(i);
-      }
-      if (has || cands.length < 2) continue;
-      const regs = new Set(cands.map((i) => region[i]));
-      if (regs.size === 1) {
-        const g = [...regs][0];
-        for (const i of byRegion[g]) {
-          if (isCand(i) && i % N !== c) { elim[i] = true; changed = true; }
-        }
-      }
+      if (colHasCat(c)) continue;
+      const cd = colCells(c);
+      if (cd.length === 1) { place(cd[0]); did = true; } else if (cd.length === 0) return 'dead';
     }
+    return did;
   }
 
-  if (placed === N) {
-    const out = [];
-    for (let i = 0; i < total; i++) if (cat[i]) out.push(i);
-    return out;
+  // Hall 子集（sizeLo..sizeHi）。size=1 即限定/指向；size≥2 即子集。返回是否排除了候选。
+  function runHall(sizeLo, sizeHi) {
+    let did = false;
+    const elimIf = (pred) => { for (let i = 0; i < total; i++) if (isCand(i) && pred(i)) { elim[i] = true; did = true; } };
+    const colors = []; for (let g = 0; g < N; g++) if (!byRegion[g].some((i) => cat[i]) && colCands(g).length) colors.push(g);
+    const rows = []; for (let r = 0; r < N; r++) if (!rowHasCat(r) && rowCands(r).length) rows.push(r);
+    const cols = []; for (let c = 0; c < N; c++) if (!colHasCat(c) && colCells(c).length) cols.push(c);
+
+    const view = (subjects, featOf, eliminate) => {
+      for (let size = sizeLo; size <= Math.min(sizeHi, subjects.length - 1); size++) {
+        for (const cb of combinations(subjects, size)) {
+          const u = new Set();
+          for (const s of cb) for (const f of featOf(s)) u.add(f);
+          if (u.size === size) eliminate(new Set(cb), u);
+        }
+      }
+    };
+    // V1 颜色×行
+    view(colors, (g) => colCands(g).map((i) => Math.floor(i / N)), (ids, rs) => elimIf((i) => rs.has(Math.floor(i / N)) && !ids.has(region[i])));
+    // V2 颜色×列
+    view(colors, (g) => colCands(g).map((i) => i % N), (ids, cs) => elimIf((i) => cs.has(i % N) && !ids.has(region[i])));
+    // V3 行×颜色
+    view(rows, (r) => rowCands(r).map((i) => region[i]), (ids, gs) => elimIf((i) => gs.has(region[i]) && !ids.has(Math.floor(i / N))));
+    // V4 列×颜色
+    view(cols, (c) => colCells(c).map((i) => region[i]), (ids, gs) => elimIf((i) => gs.has(region[i]) && !ids.has(i % N)));
+    return did;
   }
-  return null;
+
+  // L4：相邻锁定。返回是否排除了候选。
+  function runAdjacency() {
+    let did = false;
+    for (let g = 0; g < N; g++) {
+      const cd = colCands(g);
+      if (cd.length < 2) continue;
+      let inter = null;
+      for (const cell of cd) {
+        const ns = new Set(kingNeighbors(cell, N));
+        inter = inter ? new Set([...inter].filter((x) => ns.has(x))) : ns;
+      }
+      for (const j of inter) if (isCand(j)) { elim[j] = true; did = true; }
+    }
+    return did;
+  }
+
+  // 层级(按人类直觉的代价排序):
+  //   L1 单候选 → L2 限定/指向(n=1) → L3 相邻锁定(直觉、常用) → L4 Hall 子集 n≥2(抽象、罕见)
+  let guard = 0;
+  while (placed < N && guard++ < total * total) {
+    const s = runSingles();
+    if (s === 'dead') break;
+    if (s) continue;
+    if (maxLayer >= 2 && runHall(1, 1)) continue; // 限定/指向
+    if (maxLayer >= 3 && runAdjacency()) continue; // 相邻锁定
+    if (maxLayer >= 4 && runHall(2, SUBSET_CAP)) continue; // Hall 子集 n≥2
+    break; // 无任何进展 → 停滞
+  }
+  return { placed, cat };
+}
+
+// 纯逻辑（L1–L4）能否完全解出。返回猫格数组或 null（停滞→需要假设）。
+export function logicalSolve(region, N) {
+  const { placed, cat } = propagate(region, N, 4);
+  if (placed !== N) return null;
+  const out = [];
+  for (let i = 0; i < cat.length; i++) if (cat[i]) out.push(i);
+  return out;
+}
+
+// 难度评级 = 解出该关所需的最高层级（1..4）；0 = 即便 L4 也解不出（需假设，生成器拒绝）。
+export function rateLevel(region, N) {
+  for (let L = 1; L <= 4; L++) {
+    if (propagate(region, N, L).placed === N) return L;
+  }
+  return 0;
 }

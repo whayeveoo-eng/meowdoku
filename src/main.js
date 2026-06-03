@@ -8,6 +8,7 @@ import { createEffects } from './render/effects.js';
 import { createAnim } from './render/anim.js';
 import { createUI } from './render/ui.js';
 import { createAudio } from './audio/sound.js';
+import { LEVELS, LEVEL_COUNT } from './data/levels.js';
 
 const root = document;
 const canvas = root.getElementById('md-board');
@@ -121,10 +122,40 @@ function saveAutoPref(on) {
   }
 }
 
+// ---- 关卡进度：localStorage ----
+const PROG_KEY = 'meowdoku.progress';
+function loadProgress() {
+  try {
+    const p = JSON.parse(localStorage.getItem(PROG_KEY));
+    if (p && p.unlocked) return { unlocked: p.unlocked, done: p.done || {}, current: p.current || 1 };
+  } catch {
+    /* ignore */
+  }
+  return { unlocked: 1, done: {}, current: 1 };
+}
+function saveProgress() {
+  try {
+    localStorage.setItem(PROG_KEY, JSON.stringify(progress));
+  } catch {
+    /* ignore */
+  }
+}
+const progress = loadProgress();
+
 // ---- DOM 控制层 ----
 const ui = createUI(root, {
-  onNewGame: (n) => startGame(n),
-  onRetry: () => startGame(game.state.N, game.state.seed), // 同一关重来
+  onSelectLevel: (id) => {
+    if (id < 1 || id > LEVEL_COUNT || id > progress.unlocked) return;
+    ui.closeLevels();
+    startLevel(id);
+  },
+  onNext: () => {
+    const next = Math.min(game.state.levelId + 1, LEVEL_COUNT);
+    if (next <= progress.unlocked) startLevel(next);
+    else ui.openLevels(progress);
+  },
+  onRestart: () => startLevel(game.state.levelId || progress.current),
+  onOpenLevels: () => { ui.hideModals(); ui.openLevels(progress); },
   onUndo: () => game.undo(),
   onClear: () => game.clearBoard(),
   onHint: () => game.hint(),
@@ -140,7 +171,7 @@ const ui = createUI(root, {
     ui.setSoundOn(on);
     ui.meow(on ? '声音：开喵 🔊' : '声音：静音 🔇');
   },
-});
+}, LEVELS);
 
 // ---- 事件 → 特效 / 动画 / 音效 / 吉祥物 ----
 game.on('catPlaced', ({ index }) => {
@@ -164,8 +195,17 @@ game.on('cellChanged', ({ next }) => {
 game.on('gameWon', (payload) => {
   effects.celebrate();
   audio.win();
-  ui.meow('喵呜！全部安顿好啦！');
-  ui.showWin(payload);
+  // 记录进度:本关通关、解锁下一关
+  const id = payload.levelId;
+  if (id >= 1) {
+    progress.done[id] = true;
+    progress.unlocked = Math.max(progress.unlocked, Math.min(id + 1, LEVEL_COUNT));
+    progress.current = id;
+    saveProgress();
+  }
+  const isLast = id >= LEVEL_COUNT;
+  ui.meow(isLast ? '全部通关啦喵！🏆' : '喵呜！下一关也交给你~');
+  ui.showWin(payload, isLast);
 });
 game.on('gameLost', (payload) => {
   audio.fail();
@@ -173,15 +213,20 @@ game.on('gameLost', (payload) => {
   ui.showFail(payload);
 });
 
-function startGame(n, seed) {
+// 载入第 id 关(关卡制)。
+function startLevel(id) {
+  const lv = LEVELS[id - 1];
+  if (!lv) return;
+  progress.current = id;
+  saveProgress();
   ui.hideModals();
-  game.newGame(n, seed);
+  game.loadLevel(lv);
   effects.setBoard(game.state.N);
   effects.reset();
   anim.reset();
   anim.syncMarks(game.state); // 以空盘为基线，避免开局误触发动画
   resizeCanvas();
-  ui.meow('给每只猫找个位子喵~');
+  ui.meow(`第 ${id} 关 · 给每只猫找个位子喵~`);
 }
 
 // ---- 渲染循环 ----
@@ -203,7 +248,7 @@ function frame() {
 game.setAutoEliminate(loadAutoPref()); // 应用玩家偏好
 ui.setSoundOn(audio.enabled); // 同步声音按钮初始态
 resizeCanvas();
-startGame();
+startLevel(Math.min(progress.current || 1, progress.unlocked)); // 从上次/已解锁处开始
 requestAnimationFrame(frame);
 
 // ---- 测试钩子（沿用项目约定）----
@@ -215,6 +260,10 @@ window.__meowdoku = {
     effects.reset();
     resizeCanvas();
   },
+  startLevel: (id) => startLevel(id),
+  levelId: () => game.state.levelId,
+  levels: LEVELS,
+  progress: () => ({ ...progress }),
   getState: () => game.state,
   getRegion: () => game.state.region.slice(),
   getSolution: () => game.state.solution.slice(),
@@ -227,6 +276,7 @@ window.__meowdoku = {
   autoMarks: () => [...game.state.autoMarks],
   hp: () => game.state.hp,
   status: () => game.state.status,
+  maxLayer: () => game.state.maxLayer,
   autoEliminate: () => game.state.autoEliminate,
   setAutoEliminate: (on) => game.setAutoEliminate(on),
   isSolved: () => game.isSolved(),

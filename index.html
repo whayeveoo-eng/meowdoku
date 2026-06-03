@@ -56,22 +56,83 @@
       }
       .md-chip.bad { color: var(--accent); }
 
-      .md-sizes { display: flex; gap: 6px; }
-      .md-sizes button {
-        flex: 1;
-        padding: 7px 2px;
+      /* 关卡头 */
+      .md-levelbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        background: var(--card);
+        border-radius: 14px;
+        box-shadow: var(--shadow);
+        padding: 7px 12px;
+      }
+      .md-level-info { font-size: 15px; font-weight: 700; color: var(--ink); }
+      .md-level-info b { color: var(--accent); }
+      .md-stars { color: #e0a92e; letter-spacing: 1px; }
+      .md-stars[data-stars="4"], .md-stars[data-stars="5"] { color: #d6432f; }
+      .md-levels-btn {
         border: none;
         border-radius: 12px;
-        background: var(--card);
-        color: var(--ink-soft);
+        background: var(--accent);
+        color: #fff;
         font-weight: 700;
-        font-size: 14px;
+        font-size: 13.5px;
+        padding: 7px 12px;
+        cursor: pointer;
+        flex: 0 0 auto;
+      }
+      .md-levels-btn:active { transform: scale(0.95); }
+
+      /* 选关网格 */
+      .md-levels-card {
+        background: var(--card);
+        border-radius: 22px;
+        padding: 18px 16px 16px;
+        width: 100%;
+        max-width: 360px;
+        max-height: 80vh;
+        display: flex;
+        flex-direction: column;
+        box-shadow: var(--shadow-lg);
+        animation: pop 0.25s ease;
+      }
+      .md-levels-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+      .md-levels-head h3 { margin: 0; font-size: 18px; color: #9a7d96; }
+      .md-levels-count { font-size: 13px; color: var(--ink-soft); font-weight: 700; }
+      #md-levelgrid {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 8px;
+        overflow-y: auto;
+        padding: 2px;
+      }
+      .md-lvl {
+        aspect-ratio: 1 / 1;
+        border: none;
+        border-radius: 12px;
+        background: #f3ede8;
+        color: var(--ink);
+        font-weight: 800;
+        font-size: 15px;
         cursor: pointer;
         box-shadow: var(--shadow);
-        transition: transform 0.08s, background 0.15s, color 0.15s;
       }
-      .md-sizes button.active { background: var(--accent); color: #fff; }
-      .md-sizes button:active { transform: scale(0.95); }
+      .md-lvl:active { transform: scale(0.92); }
+      .md-lvl.current { outline: 3px solid var(--accent); }
+      .md-lvl.done { background: #a8d488; color: #fff; }
+      .md-lvl.locked { background: #ece7e1; color: #c4bbb2; box-shadow: none; cursor: default; }
+      .md-levels-close {
+        margin-top: 12px;
+        border: none;
+        border-radius: 14px;
+        background: #ece6f0;
+        color: #8c7e94;
+        font-weight: 700;
+        font-size: 15px;
+        padding: 10px;
+        cursor: pointer;
+      }
 
       /* 棋盘按高度上限收缩，保证下方工具栏始终可见（预留约 300px 给其它行 + 浏览器栏）。 */
       .md-board-wrap {
@@ -210,7 +271,10 @@
         </div>
       </div>
 
-      <div class="md-sizes" id="md-sizes"></div>
+      <div class="md-levelbar">
+        <span class="md-level-info" id="md-level-info">第 <b>1</b> 关 · 5×5 · <span class="md-stars">★☆☆☆☆</span></span>
+        <button class="md-levels-btn" id="md-levels-btn">📋 关卡</button>
+      </div>
 
       <div class="md-rules">
         <span class="md-rule">一种颜色一只猫</span>
@@ -237,17 +301,18 @@
         <button id="md-undo"><span class="md-ico">↩️</span>撤销</button>
         <button id="md-clear"><span class="md-ico">🧹</span>清空</button>
         <button id="md-hint"><span class="md-ico">💡</span>提示</button>
-        <button id="md-new"><span class="md-ico">🔄</span>新关</button>
+        <button id="md-restart"><span class="md-ico">🔄</span>重开</button>
       </div>
     </div>
 
     <div class="md-modal" id="md-win">
       <div class="md-card">
         <div class="md-cat">😻</div>
-        <h2>安家成功喵！</h2>
+        <h2 id="md-win-title">安家成功喵！</h2>
         <div class="md-big" id="md-win-time">00:00</div>
         <div class="md-sub" id="md-win-stats"></div>
-        <button id="md-win-again">再来一关 🐾</button>
+        <button id="md-next">下一关 ▶</button>
+        <button id="md-win-levels" class="md-ghost">选关</button>
       </div>
     </div>
 
@@ -256,8 +321,19 @@
         <div class="md-cat">🙀</div>
         <h2 style="color:#d6432f">喵呜…没血了</h2>
         <div class="md-sub" id="md-fail-stats"></div>
-        <button id="md-fail-retry">再试一次（同一关）🐾</button>
-        <button id="md-fail-new" class="md-ghost">换一关</button>
+        <button id="md-fail-retry">再试一次 🐾</button>
+        <button id="md-fail-levels" class="md-ghost">选关</button>
+      </div>
+    </div>
+
+    <div class="md-modal" id="md-levels">
+      <div class="md-levels-card">
+        <div class="md-levels-head">
+          <h3>选关</h3>
+          <span class="md-levels-count" id="md-levels-count">已通关 0 / 100</span>
+        </div>
+        <div id="md-levelgrid"></div>
+        <button class="md-levels-close" id="md-levels-close">关闭</button>
       </div>
     </div>
 

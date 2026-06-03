@@ -16,6 +16,22 @@ export const CELL = { EMPTY: 0, MARK: 1, CAT: 2, WRONG: 3 };
 // 每关血量。标记猫错误（放到非正解格）扣 1 滴，归零失败。
 export const LIVES = 3;
 
+// 技巧难度:按"纯逻辑解出所需最高层级"映射(见 solver.rateLevel / docs/solving.md)。
+//   L1 单候选 / L2 限定 → 简单;L3 相邻锁定 → 中等;L4 Hall 子集 n≥2 → 困难。
+export function difficultyOf(maxLayer) {
+  if (maxLayer >= 4 || maxLayer <= 0) return { key: 'hard', label: '困难', stars: 3 };
+  if (maxLayer === 3) return { key: 'medium', label: '中等', stars: 2 };
+  return { key: 'easy', label: '简单', stars: 1 };
+}
+
+// 关卡综合难度(1..5 ★):尺寸 N 与技巧层级 maxLayer 各占一半。
+// 用于关卡制的难度展示与心流曲线评估。见 docs/design.md「难度评估标准」。
+export function levelStars(n, maxLayer) {
+  const ml = Math.max(1, maxLayer || 1);
+  const raw = ((n - 5) / 5) * 0.5 + ((ml - 1) / 3) * 0.5; // 0..1
+  return Math.max(1, Math.min(5, 1 + Math.round(raw * 4)));
+}
+
 export const FEATURE_FLAGS = {
   validatePlacement: true, // 放猫前校验是否为唯一解的正确格；错误则扣血、不落子
   hintsEnabled: true, // 提示放一只正确小猫

@@ -26,6 +26,8 @@ export function createGame() {
     autoEliminate: FEATURE_FLAGS.autoEliminate, // 运行时开关，玩家可切换
     hp: LIVES,
     maxHp: LIVES,
+    maxLayer: 0, // 本关纯逻辑解出所需最高层级(难度评级，见 solver.rateLevel)
+    levelId: 0, // 关卡制:当前关编号(1..100)，0=非关卡(自由)
   };
 
   function recompute() {
@@ -73,11 +75,21 @@ export function createGame() {
     state.selected = -1;
     state.hp = LIVES;
     state.maxHp = LIVES;
+    state.maxLayer = level.maxLayer || 0;
     history.length = 0;
     recompute();
     stats.reset();
 
+    state.levelId = 0; // 默认非关卡；loadLevel 会改写
     bus.emit('gameStarted', { N, seed: usedSeed, fallback: !!level.fallback });
+    return state;
+  }
+
+  // 关卡制：按关卡数据 { id, n, seed } 载入（确定性复现该关）。
+  function loadLevel(level) {
+    newGame(level.n, level.seed);
+    state.levelId = level.id;
+    bus.emit('levelLoaded', { levelId: level.id, N: state.N, maxLayer: state.maxLayer });
     return state;
   }
 
@@ -290,6 +302,7 @@ export function createGame() {
       bus.emit('gameWon', {
         N: state.N,
         seed: state.seed,
+        levelId: state.levelId,
         elapsedMs: stats.elapsedMs(),
         mistakes: stats.state.mistakes,
         hints: stats.state.hints,
@@ -304,6 +317,7 @@ export function createGame() {
     off: bus.off.bind(bus),
     emit: bus.emit.bind(bus),
     newGame,
+    loadLevel,
     select,
     cycleCell,
     attemptCat,
