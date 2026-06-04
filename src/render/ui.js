@@ -31,6 +31,9 @@ export function createUI(root, handlers, levels) {
     levelsModal: el('#md-levels'),
     levelGrid: el('#md-levelgrid'),
     levelsCount: el('#md-levels-count'),
+    homeScreen: el('#md-home'),
+    homeStartBtn: el('#md-home-start'),
+    homeSoundBtn: el('#md-home-sound'),
   };
 
   // 选关网格：100 个按钮，建一次。每个显示「关号 + N×N 行列 + 难度星」。
@@ -59,6 +62,14 @@ export function createUI(root, handlers, levels) {
   el('#md-ability-close').addEventListener('click', () => ui.abilityModal.classList.remove('show'));
   el('#md-practice-btn').addEventListener('click', () => handlers.onPractice());
   el('#md-practice-close').addEventListener('click', () => ui.practiceModal.classList.remove('show'));
+
+  // 开始界面 / 主菜单：🏠 回主菜单；菜单按钮复用既有入口（弹层叠在主菜单之上）。
+  el('#md-home-btn').addEventListener('click', () => handlers.onGoHome());
+  el('#md-home-start').addEventListener('click', () => handlers.onHomeStart());
+  el('#md-home-levels').addEventListener('click', () => handlers.onOpenLevels());
+  el('#md-home-practice').addEventListener('click', () => handlers.onPractice());
+  el('#md-home-ability').addEventListener('click', () => handlers.onOpenAbility());
+  el('#md-home-sound').addEventListener('click', handlers.onToggleSound);
 
   el('#md-sound').addEventListener('click', handlers.onToggleSound);
   el('#md-auto').addEventListener('click', handlers.onToggleAuto);
@@ -99,7 +110,18 @@ export function createUI(root, handlers, levels) {
   function setSoundOn(on) {
     ui.soundBtn.textContent = on ? '🔊' : '🔇';
     ui.soundBtn.classList.toggle('off', !on);
+    ui.homeSoundBtn.textContent = `${on ? '🔊' : '🔇'} 声音`; // 主菜单声音按钮同步
   }
+
+  // 开始界面 / 主菜单：主按钮文案随进度（进行中战役关→继续，否则→开始）；其余入口复用既有弹层。
+  function openHome(progress, state) {
+    const resume = state && state.status === 'playing' && state.levelId >= 1;
+    const n = resume ? state.levelId : Math.min(progress.current || 1, progress.unlocked || 1);
+    ui.homeStartBtn.textContent = `▶ ${resume ? '继续' : '开始'} · 第 ${n} 关`;
+    ui.homeScreen.classList.add('show');
+  }
+  function closeHome() { ui.homeScreen.classList.remove('show'); }
+  function isHomeOpen() { return ui.homeScreen.classList.contains('show'); }
 
   // 选关弹层：刷新每个关卡按钮状态（已通关✓ / 已解锁数字 / 未解锁🔒），并打开。
   function openLevels(progress) {
@@ -180,5 +202,5 @@ export function createUI(root, handlers, levels) {
     ui.practiceModal.classList.add('show');
   }
 
-  return { refresh, showWin, showFail, hideModals, openLevels, closeLevels, openAbility, openPractice, meow, setSoundOn, ui };
+  return { refresh, showWin, showFail, hideModals, openLevels, closeLevels, openAbility, openPractice, openHome, closeHome, isHomeOpen, meow, setSoundOn, ui };
 }

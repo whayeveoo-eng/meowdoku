@@ -85,6 +85,7 @@ canvas.addEventListener('pointercancel', endPointer);
 
 window.addEventListener('keydown', (e) => {
   if (game.state.status !== 'playing') return;
+  if (ui.isHomeOpen()) return; // 主菜单开着时不操作背后的盘
   audio.unlock();
   const N = game.state.N;
   if (e.key === ' ' || e.key === 'Enter') {
@@ -177,6 +178,12 @@ const ui = createUI(root, {
   },
   onOpenLevels: () => { ui.hideModals(); ui.openLevels(progress); },
   onOpenAbility: () => { ui.hideModals(); ui.openAbility(scoreAbility(ability)); },
+  onGoHome: () => { ui.hideModals(); ui.openHome(progress, game.state); },
+  onHomeStart: () => {
+    // 进行中的战役关 → 直接恢复（保留已放标记）；否则进当前/已解锁的战役关。
+    if (!practiceMode && game.state.status === 'playing' && game.state.levelId >= 1) ui.closeHome();
+    else startLevel(Math.min(progress.current || 1, progress.unlocked));
+  },
   onPractice: () => openPracticePanel(),
   onPickPractice: (target) => startPracticeWith(target),
   onUnlockAll: () => {
@@ -269,6 +276,7 @@ function startLevel(id) {
   progress.current = id;
   saveProgress();
   ui.hideModals();
+  ui.closeHome();
   game.loadLevel(lv);
   afterBoardReady();
   ui.meow(`第 ${id} 关 · 给每只猫找个位子喵~`);
@@ -284,6 +292,7 @@ function openPracticePanel() {
 function startPracticeWith(target) {
   practiceMode = true;
   ui.hideModals();
+  ui.closeHome();
   const m = generateMatched(target.n, target.tier);
   game.newGame(m.n, m.seed); // levelId=0 → 不计战役进度
   afterBoardReady();
@@ -316,7 +325,8 @@ function frame() {
 game.setAutoEliminate(loadAutoPref()); // 应用玩家偏好
 ui.setSoundOn(audio.enabled); // 同步声音按钮初始态
 resizeCanvas();
-startLevel(Math.min(progress.current || 1, progress.unlocked)); // 从上次/已解锁处开始
+startLevel(Math.min(progress.current || 1, progress.unlocked)); // 预载当前战役关(主菜单背后就绪)
+ui.openHome(progress, game.state); // 开机先进主菜单(继续/选关/练习)
 requestAnimationFrame(frame);
 
 // ---- 测试钩子（沿用项目约定）----
@@ -329,6 +339,9 @@ window.__meowdoku = {
     resizeCanvas();
   },
   startLevel: (id) => startLevel(id),
+  openHome: () => ui.openHome(progress, game.state),
+  closeHome: () => ui.closeHome(),
+  isHome: () => ui.isHomeOpen(),
   levelId: () => game.state.levelId,
   levels: LEVELS,
   progress: () => ({ ...progress }),
