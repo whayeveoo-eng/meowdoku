@@ -184,7 +184,7 @@ function* combinations(arr, k, start = 0, acc = []) {
 }
 
 // 运行 L1..maxLayer 的约束传播到不动点。返回 { placed, cat }。
-function propagate(region, N, maxLayer) {
+function propagate(region, N, maxLayer, seedCats = []) {
   const total = N * N;
   const cat = new Array(total).fill(false);
   const elim = new Array(total).fill(false);
@@ -275,6 +275,8 @@ function propagate(region, N, maxLayer) {
     return did;
   }
 
+  for (const s of seedCats) place(s); // 预置已知猫(玩家当前局面),从此状态继续推
+
   // 层级(按人类直觉的代价排序):
   //   L1 单候选 → L2 限定/指向(n=1) → L3 相邻锁定(直觉、常用) → L4 Hall 子集 n≥2(抽象、罕见)
   let guard = 0;
@@ -303,6 +305,16 @@ export function logicalSolve(region, N) {
 export function rateLevel(region, N) {
   for (let L = 1; L <= 4; L++) {
     if (propagate(region, N, L).placed === N) return L;
+  }
+  return 0;
+}
+
+// 给定玩家当前已放的猫 placedCats,目标格 cell 在此局面下"被强制确定"所需的最低策略层级(1..4)。
+// 返回 0 = 即便 L4 也未被强制(玩家在它还没被逼出来时就放了,属"超前/凭感觉")。
+// 用作能力打分:玩家放对一只猫 = 答对一道难度为该层级的"题"。
+export function forceLayerOf(region, N, placedCats, cell) {
+  for (let L = 1; L <= 4; L++) {
+    if (propagate(region, N, L, placedCats).cat[cell]) return L;
   }
   return 0;
 }

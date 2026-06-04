@@ -9,6 +9,8 @@ import { createAnim } from './render/anim.js';
 import { createUI } from './render/ui.js';
 import { createAudio } from './audio/sound.js';
 import { LEVELS, LEVEL_COUNT } from './data/levels.js';
+import { emptyAbility, recordItem, scoreAbility } from './core/scoring.js';
+import { pickThree, recommendKey, generateMatched } from './core/recommend.js';
 
 const root = document;
 const canvas = root.getElementById('md-board');
@@ -142,6 +144,20 @@ function saveProgress() {
 }
 const progress = loadProgress();
 
+// ---- 玩家能力(每只猫=一道题,聚合计数持久化)----
+const ABILITY_KEY = 'meowdoku.ability';
+function loadAbility() {
+  try {
+    const a = JSON.parse(localStorage.getItem(ABILITY_KEY));
+    if (a) { const e = emptyAbility(); for (let d = 1; d <= 5; d++) if (a[d]) e[d] = { clean: a[d].clean | 0, struggle: a[d].struggle | 0, hint: a[d].hint | 0 }; return e; }
+  } catch { /* ignore */ }
+  return emptyAbility();
+}
+function saveAbility() { try { localStorage.setItem(ABILITY_KEY, JSON.stringify(ability)); } catch { /* ignore */ } }
+const ability = loadAbility();
+let practiceMode = false; // 自适应"为你推荐/练习"模式(不计入战役进度)
+let lastStruggled = null; // 上一关练习是否磕绊(放错/用提示)→ DDA 推荐降档
+
 // ---- DOM 控制层 ----
 const ui = createUI(root, {
   onSelectLevel: (id) => {
@@ -150,12 +166,19 @@ const ui = createUI(root, {
     startLevel(id);
   },
   onNext: () => {
+    if (practiceMode) { openPracticePanel(); return; } // 练习:再来一道→重开三选(带 DDA 推荐)
     const next = Math.min(game.state.levelId + 1, LEVEL_COUNT);
     if (next <= progress.unlocked) startLevel(next);
     else ui.openLevels(progress);
   },
-  onRestart: () => startLevel(game.state.levelId || progress.current),
+  onRestart: () => {
+    if (practiceMode) reloadCurrent(); // 重玩本练习关(同 seed)
+    else startLevel(game.state.levelId || progress.current);
+  },
   onOpenLevels: () => { ui.hideModals(); ui.openLevels(progress); },
+  onOpenAbility: () => { ui.hideModals(); ui.openAbility(scoreAbility(ability)); },
+  onPractice: () => openPracticePanel(),
+  onPickPractice: (target) => startPracticeWith(target),
   onUnlockAll: () => {
     progress.unlocked = LEVEL_COUNT;
     saveProgress();
@@ -198,10 +221,20 @@ game.on('wrongPlacement', ({ index, hp }) => {
 game.on('cellChanged', ({ next }) => {
   if (next === CELL.MARK) audio.click(); // 打 ✕（含滑动，内部节流）
 });
+game.on('stageScored', ({ d, outcome }) => {
+  if (d >= 1) { recordItem(ability, d, outcome); saveAbility(); } // 能力计分(d=0 超前不计)
+});
 game.on('gameWon', (payload) => {
   effects.celebrate();
   audio.win();
-  // 记录进度:本关通关、解锁下一关
+  const report = scoreAbility(ability);
+  if (practiceMode) {
+    lastStruggled = payload.mistakes > 0 || payload.hints > 0; // 磕绊/用提示 → 下次 DDA 推荐巩固
+    ui.meow(`练习过关喵！段位：${report.title}`);
+    ui.showWin(payload, false, report, { practice: true });
+    return;
+  }
+  // 战役:记录进度、解锁下一关
   const id = payload.levelId;
   if (id >= 1) {
     progress.done[id] = true;
@@ -211,7 +244,7 @@ game.on('gameWon', (payload) => {
   }
   const isLast = id >= LEVEL_COUNT;
   ui.meow(isLast ? '全部通关啦喵！🏆' : '喵呜！下一关也交给你~');
-  ui.showWin(payload, isLast);
+  ui.showWin(payload, isLast, report);
 });
 game.on('gameLost', (payload) => {
   audio.fail();
@@ -219,20 +252,49 @@ game.on('gameLost', (payload) => {
   ui.showFail(payload);
 });
 
-// 载入第 id 关(关卡制)。
-function startLevel(id) {
-  const lv = LEVELS[id - 1];
-  if (!lv) return;
-  progress.current = id;
-  saveProgress();
-  ui.hideModals();
-  game.loadLevel(lv);
+// 进入棋盘后的统一重置(特效/动画/画布)。
+function afterBoardReady() {
   effects.setBoard(game.state.N);
   effects.reset();
   anim.reset();
   anim.syncMarks(game.state); // 以空盘为基线，避免开局误触发动画
   resizeCanvas();
+}
+
+// 载入第 id 关(关卡制)。
+function startLevel(id) {
+  const lv = LEVELS[id - 1];
+  if (!lv) return;
+  practiceMode = false;
+  progress.current = id;
+  saveProgress();
+  ui.hideModals();
+  game.loadLevel(lv);
+  afterBoardReady();
   ui.meow(`第 ${id} 关 · 给每只猫找个位子喵~`);
+}
+
+// 打开三选面板(巩固/进阶/挑战),DDA 推荐其一高亮。
+function openPracticePanel() {
+  ui.hideModals();
+  ui.openPractice(pickThree(scoreAbility(ability)), recommendKey(lastStruggled));
+}
+
+// 选定一档 → 形状优选现生成匹配关并开始。
+function startPracticeWith(target) {
+  practiceMode = true;
+  ui.hideModals();
+  const m = generateMatched(target.n, target.tier);
+  game.newGame(m.n, m.seed); // levelId=0 → 不计战役进度
+  afterBoardReady();
+  ui.meow(`${target.key}：${m.n}×${m.n} · 攻克${target.label}`);
+}
+
+// 重玩当前(练习关同 seed,战役关同关)。
+function reloadCurrent() {
+  ui.hideModals();
+  game.newGame(game.state.N, game.state.seed);
+  afterBoardReady();
 }
 
 // ---- 渲染循环 ----
@@ -246,7 +308,7 @@ function frame() {
   anim.update();
   effects.update();
   effects.draw(ctx);
-  ui.refresh(game.state, game.stats);
+  ui.refresh(game.state, game.stats, practiceMode);
   requestAnimationFrame(frame);
 }
 
@@ -270,6 +332,11 @@ window.__meowdoku = {
   levelId: () => game.state.levelId,
   levels: LEVELS,
   progress: () => ({ ...progress }),
+  ability: () => scoreAbility(ability),
+  abilityRaw: () => ability,
+  practiceThree: () => pickThree(scoreAbility(ability)),
+  startPracticeKey: (key) => { const t = pickThree(scoreAbility(ability)).find((x) => x.key === key); if (t) startPracticeWith(t); },
+  isPractice: () => practiceMode,
   getState: () => game.state,
   getRegion: () => game.state.region.slice(),
   getSolution: () => game.state.solution.slice(),

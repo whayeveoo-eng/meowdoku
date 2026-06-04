@@ -2,6 +2,7 @@
 // 渲染层只读 state，输入层只调方法。
 
 import { generateLevel } from './generator.js';
+import { forceLayerOf } from './solver.js';
 import { findConflicts, isSolved, catCount, indexOf, eliminatedCells } from './board.js';
 import { makeRng, randomSeed } from './rng.js';
 import { createEventBus } from './events.js';
@@ -59,6 +60,18 @@ export function createGame() {
     return state.autoEliminate;
   }
 
+  // ---- 能力打分:把每只猫当一道题 ----
+  let stageWrong = 0; // 自上次成功落子以来的放错次数(本阶段)
+  let scoredCells = new Set(); // 本关已评分的格(防移走后重放重复计分)
+  function scoreStage(cell, outcome) {
+    if (scoredCells.has(cell)) return;
+    scoredCells.add(cell);
+    const placedBefore = [];
+    for (let i = 0; i < state.cells.length; i++) if (state.cells[i] === CELL.CAT) placedBefore.push(i);
+    const d = forceLayerOf(state.region, state.N, placedBefore, cell); // 落子前该格被逼出来所需层级
+    bus.emit('stageScored', { cell, d, outcome }); // d=0 表示超前/凭感觉(不计入能力)
+  }
+
   function newGame(n = state.N, seed) {
     const N = SIZES.includes(n) ? n : DEFAULT_N;
     const usedSeed = (seed >>> 0) || randomSeed();
@@ -77,6 +90,8 @@ export function createGame() {
     state.maxHp = LIVES;
     state.maxLayer = level.maxLayer || 0;
     history.length = 0;
+    stageWrong = 0;
+    scoredCells = new Set();
     recompute();
     stats.reset();
 
@@ -166,6 +181,7 @@ export function createGame() {
 
     if (!correct) {
       stats.state.mistakes++;
+      stageWrong++;
       state.hp = Math.max(0, state.hp - 1);
       state.cells[index] = CELL.WRONG; // 留下红 ✕ 提示此处试过且错了（不进撤销栈、不可撤回血量）
       recompute();
@@ -184,9 +200,11 @@ export function createGame() {
       return;
     }
 
+    scoreStage(index, stageWrong > 0 ? 'struggle' : 'clean'); // 能力打分:本格在落子前的难度 + 作答
     state.cells[index] = CELL.CAT;
     pushHistory(index, prev, CELL.CAT);
     stats.state.moves++;
+    stageWrong = 0;
     recompute();
     bus.emit('catPlaced', { index });
     bus.emit('cellChanged', { index, prev, next: CELL.CAT });
@@ -285,11 +303,13 @@ export function createGame() {
         pushHistory(i, prev, CELL.EMPTY);
       }
     }
+    scoreStage(target, 'hint'); // 能力打分:用提示=这道题没自己解出
     const prev = state.cells[target];
     state.cells[target] = CELL.CAT;
     pushHistory(target, prev, CELL.CAT);
     state.selected = target;
     stats.state.hints++;
+    stageWrong = 0;
     recompute();
     bus.emit('hintUsed', { index: target });
     checkWin();
